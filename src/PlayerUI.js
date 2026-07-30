@@ -71,12 +71,12 @@ function buildControlRow1(disabled = false, paused = false) {
   );
 }
 
-function buildControlRow2(disabled = false, shuffle = false, loopOff = true) {
+function buildControlRow2(disabled = false, shuffle = false, loopOff = true, stayOff = true) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('shuffle').setLabel('🔀').setStyle(shuffle ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('loop').setLabel('🔁').setStyle(loopOff ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(disabled),
     new ButtonBuilder().setCustomId('stop').setLabel('⏹').setStyle(ButtonStyle.Danger).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('autoplay').setLabel('🔄').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('stay').setLabel(stayOff ? '🔓' : '🔒').setStyle(stayOff ? ButtonStyle.Secondary : ButtonStyle.Success).setDisabled(disabled),
     new ButtonBuilder().setCustomId('playlist').setLabel('📋').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
   );
 }

@@ -220,9 +220,10 @@ async function handleButton(interaction) {
     case 'loop':
       manager.toggleLoop(guild.id);
       break;
-    case 'autoplay':
-      queue.autoplay = !queue.autoplay;
-      return interaction.reply({ content: `🔄 Autoplay ${queue.autoplay ? 'ON' : 'OFF'}`, ephemeral: true });
+    case 'stay': {
+      const stayOn = manager.toggleStay(guild.id);
+      return interaction.reply({ content: stayOn ? '🔒 Stay ON' : '🔓 Stay OFF', ephemeral: true });
+    }
     case 'playlist': {
       const list = queue.tracks.slice(0, 10).map((t, i) => {
         const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;

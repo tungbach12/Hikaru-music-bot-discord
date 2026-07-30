@@ -310,7 +310,7 @@ class MusicManager {
     if (!track) return;
     const embed = buildPlayingEmbed(track, queue);
     const row1 = buildControlRow1(false, queue.paused);
-    const row2 = buildControlRow2(false, queue.shuffle, queue.loop === 'off');
+    const row2 = buildControlRow2(false, queue.shuffle, queue.loop === 'off', !queue.stay);
     queue.message.edit({ embeds: [embed], components: [row1, row2] }).catch(() => {});
   }
 }
