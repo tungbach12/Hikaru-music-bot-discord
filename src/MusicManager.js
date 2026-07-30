@@ -305,21 +305,33 @@ class MusicManager {
   // ── Embed update ───────────────────────────────────────────
 
   updatePlayerEmbed(queue) {
-    if (!queue.message) return;
+    if (!queue.channel) return;
     const track = queue.tracks[queue.currentIndex];
     if (!track) return;
     const embed = buildPlayingEmbed(track, queue);
     const row1 = buildControlRow1(false, queue.paused);
     const row2 = buildControlRow2(false, queue.shuffle, queue.loop === 'off', !queue.stay);
-    queue.message.edit({ embeds: [embed], components: [row1, row2] }).catch(async (err) => {
-      // Message was deleted — recreate it
-      console.log(`[Panel] Message deleted, recreating...`);
-      if (queue.channel) {
-        try {
-          const newMsg = await queue.channel.send({ embeds: [embed], components: [row1, row2] });
-          queue.message = newMsg;
-        } catch {}
-      }
+
+    // Delete old panel + send new one (keeps panel at bottom)
+    if (queue.message) {
+      queue.message.delete().catch(() => {});
+    }
+    queue.channel.send({ embeds: [embed], components: [row1, row2] })
+      .then(msg => { queue.message = msg; })
+      .catch(() => {});
+  }
+
+  // Edit in-place (for button toggles — fast, no new message)
+  updatePlayerEmbedFast(queue) {
+    if (!queue.message) return this.updatePlayerEmbed(queue);
+    const track = queue.tracks[queue.currentIndex];
+    if (!track) return;
+    const embed = buildPlayingEmbed(track, queue);
+    const row1 = buildControlRow1(false, queue.paused);
+    const row2 = buildControlRow2(false, queue.shuffle, queue.loop === 'off', !queue.stay);
+    queue.message.edit({ embeds: [embed], components: [row1, row2] }).catch(() => {
+      // Message deleted — recreate
+      this.updatePlayerEmbed(queue);
     });
   }
 }

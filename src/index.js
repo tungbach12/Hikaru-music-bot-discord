@@ -233,15 +233,15 @@ async function handleButton(interaction) {
     return interaction.reply({ content: '⏹️ Stopped!', ephemeral: true });
   case 'shuffle':
     manager.toggleShuffle(guild.id);
-    manager.updatePlayerEmbed(queue);
+    manager.updatePlayerEmbedFast(queue);
     return interaction.reply({ content: `🔀 Shuffle ${queue.shuffle ? 'ON' : 'OFF'}`, ephemeral: true });
   case 'loop':
     manager.toggleLoop(guild.id);
-    manager.updatePlayerEmbed(queue);
+    manager.updatePlayerEmbedFast(queue);
     return interaction.reply({ content: `🔁 Loop: ${queue.loop}`, ephemeral: true });
   case 'stay': {
     manager.toggleStay(guild.id);
-    manager.updatePlayerEmbed(queue);
+    manager.updatePlayerEmbedFast(queue);
     return interaction.reply({ content: queue.stay ? '🔒 Stay ON' : '🔓 Stay OFF', ephemeral: true });
   }
   case 'playlist': {
