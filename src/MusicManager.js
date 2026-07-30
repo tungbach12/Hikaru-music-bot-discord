@@ -27,7 +27,6 @@ class MusicManager {
         stay: false,
         connection: null, channel: null, message: null,
         playing: false, paused: false,
-        startTime: null, elapsed: 0, progressInterval: null,
       });
     }
     return this.queues.get(guildId);
@@ -59,7 +58,6 @@ class MusicManager {
     player.on(AudioPlayerStatus.Idle, () => {
       const queue = this.getQueue(guildId);
       console.log(`[${guildId}] Track ended, loop=${queue.loop}, index=${queue.currentIndex}`);
-      this.stopProgressTimer(queue);
       this.killProc(guildId).then(() => {
         if (queue.loop !== 'track') queue.currentIndex++;
         this.playNext(guildId);
@@ -196,7 +194,6 @@ class MusicManager {
       const player = this.ensurePlayer(guildId);
       if (queue.connection) queue.connection.subscribe(player);
       player.play(resource);
-      this.startProgressTimer(queue);
       this.updatePlayerEmbed(queue);
     } catch (error) {
       console.error('Play error:', error);
@@ -234,28 +231,6 @@ class MusicManager {
     if (player) player.stop(true);
     if (queue.connection) { queue.connection.destroy(); queue.connection = null; }
     this.disconnect(guildId);
-  }
-
-  // ── Progress timer ────────────────────────────────────────
-
-  startProgressTimer(queue) {
-    this.stopProgressTimer(queue);
-    queue.startTime = Date.now();
-    queue.elapsed = 0;
-    queue.progressInterval = setInterval(() => {
-      if (queue.paused) return;
-      queue.elapsed = Math.floor((Date.now() - queue.startTime) / 1000);
-      this.updatePlayerEmbed(queue);
-    }, 10_000); // update every 10s
-  }
-
-  stopProgressTimer(queue) {
-    if (queue.progressInterval) {
-      clearInterval(queue.progressInterval);
-      queue.progressInterval = null;
-    }
-    queue.startTime = null;
-    queue.elapsed = 0;
   }
 
   // ── Pause / Resume ─────────────────────────────────────────
@@ -324,69 +299,6 @@ class MusicManager {
     if (queue.currentIndex > 0) {
       queue.currentIndex -= 2; // skip() will increment
       return this.skip(guildId);
-    }
-  }
-
-  // ── Seek ────────────────────────────────────────────────────
-
-  async seek(guildId, seconds) {
-    const queue = this.getQueue(guildId);
-    if (!queue.playing || queue.currentIndex < 0) return false;
-    const track = queue.tracks[queue.currentIndex];
-    if (!track) return false;
-
-    // Calculate new position
-    const currentPos = queue.elapsed || 0;
-    const newPos = Math.max(0, Math.min(currentPos + seconds, track.duration || 0));
-    console.log(`[Seek] ${currentPos}s → ${newPos}s (+${seconds}s)`);
-
-    // Restart stream from new position using --download-sections
-    await this.killProc(guildId);
-    this.stopProgressTimer(queue);
-
-    try {
-      const url = track.url;
-      const { makePipeEncode } = require('./stream');
-      const enc = makePipeEncode(url, newPos); // pass seek position
-      const pipe = { ytdlp: enc.ytdlp, ffmpeg: enc.ffmpeg, stdout: enc.stdout };
-      const inputType = enc.type;
-
-      const { createAudioResource, StreamType } = require('@discordjs/voice');
-      const { swallowPipeErr } = require('./stream');
-      const STREAM_TYPES = { WebmOpus: StreamType.WebmOpus, OggOpus: StreamType.OggOpus, Arbitrary: StreamType.Arbitrary };
-
-      const resource = createAudioResource(pipe.stdout, {
-        inputType: STREAM_TYPES[inputType] || StreamType.Arbitrary,
-      });
-      resource.playStream?.on('error', swallowPipeErr);
-
-      this.procs.set(guildId, {
-        ...pipe, resource, killing: false,
-        killAll: async () => {
-          if (pipe.ffmpeg) {
-            try { pipe.ytdlp?.stdout?.unpipe?.(pipe.ffmpeg?.stdin); } catch {}
-            try { pipe.ffmpeg?.stdin?.end?.(); } catch {}
-            try { pipe.ffmpeg?.kill?.('SIGTERM'); } catch {}
-            await new Promise(r => setTimeout(r, 120));
-            try { pipe.ffmpeg?.kill?.('SIGKILL'); } catch {}
-          }
-          try { pipe.ytdlp?.kill?.('SIGTERM'); } catch {}
-          await new Promise(r => setTimeout(r, 100));
-          try { pipe.ytdlp?.kill?.('SIGKILL'); } catch {}
-        },
-      });
-
-      const player = this.players.get(guildId);
-      if (queue.connection) queue.connection.subscribe(player);
-      player.play(resource);
-      queue.elapsed = newPos;
-      queue.startTime = Date.now() - (newPos * 1000);
-      this.startProgressTimer(queue);
-      this.updatePlayerEmbed(queue);
-      return true;
-    } catch (error) {
-      console.error('[Seek] error:', error);
-      return false;
     }
   }
 

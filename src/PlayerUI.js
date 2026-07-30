@@ -8,22 +8,13 @@ function formatTime(s) {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-function buildProgressBar(elapsed, duration) {
-  if (!duration) return '';
-  const len = 20;
-  const pos = Math.min(Math.floor((elapsed / duration) * len), len);
-  const bar = '─'.repeat(pos) + '🔵' + '─'.repeat(len - pos);
-  return `${formatTime(elapsed)} ${bar} ${formatTime(duration)}`;
-}
-
 function buildPlayingEmbed(track, queue) {
   const loopEmoji = queue.loop === 'track' ? '🔂' : queue.loop === 'queue' ? '🔁' : '➡️';
   const stayEmoji = queue.stay ? '🔒 Stay' : '🔓 Auto-Leave';
-  const progress = buildProgressBar(queue.elapsed || 0, track.duration || 0);
   return new EmbedBuilder()
     .setColor(BLUE)
     .setTitle('🎵 MUSIC PANEL')
-    .setDescription(`**Now Playing:**\n[${track.title}](${track.url})` + (progress ? `\n\n${progress}` : ''))
+    .setDescription(`**Now Playing:**\n[${track.title}](${track.url})`)
     .addFields(
       { name: '👤 Requested by', value: track.requestedBy || 'Unknown', inline: true },
       { name: '⏱️ Duration', value: formatTime(track.duration), inline: true },
@@ -72,11 +63,11 @@ function buildQueueEmbed(queue) {
 
 function buildControlRow1(disabled = false, paused = false) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('seek_back').setLabel('⏪').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('vol_down').setLabel('🔉').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('back').setLabel('⏮').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('pause').setLabel(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('skip').setLabel('⏭').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('seek_fwd').setLabel('⏩').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('vol_up').setLabel('🔊').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
   );
 }
 
