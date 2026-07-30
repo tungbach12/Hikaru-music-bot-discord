@@ -215,9 +215,11 @@ async function handleButton(interaction) {
     return interaction.reply({ content: '⏩ +30s', ephemeral: true });
   case 'vol_down':
     manager.setVolume(guild.id, queue.volume - 10);
+    manager.updatePlayerEmbedFast(queue);
     return interaction.reply({ content: `🔉 Volume: ${queue.volume}%`, ephemeral: true });
   case 'vol_up':
     manager.setVolume(guild.id, queue.volume + 10);
+    manager.updatePlayerEmbedFast(queue);
     return interaction.reply({ content: `🔊 Volume: ${queue.volume}%`, ephemeral: true });
   case 'back':
     manager.back(guild.id);
@@ -227,7 +229,8 @@ async function handleButton(interaction) {
     break;
   case 'pause':
     queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
-    break;
+    manager.updatePlayerEmbedFast(queue);
+    return interaction.reply({ content: queue.paused ? '⏸ Paused' : '▶️ Resumed', ephemeral: true });
   case 'stop':
     manager.stop(guild.id);
     return interaction.reply({ content: '⏹️ Stopped!', ephemeral: true });

@@ -238,13 +238,13 @@ class MusicManager {
   pause(guildId) {
     const queue = this.getQueue(guildId);
     const player = this.players.get(guildId);
-    if (player && queue.playing) { player.pause(); queue.paused = true; this.updatePlayerEmbed(queue); }
+    if (player && queue.playing) { player.pause(); queue.paused = true; }
   }
 
   resume(guildId) {
     const queue = this.getQueue(guildId);
     const player = this.players.get(guildId);
-    if (player && queue.paused) { player.unpause(); queue.paused = false; this.updatePlayerEmbed(queue); }
+    if (player && queue.paused) { player.unpause(); queue.paused = false; }
   }
 
   // ── Volume ─────────────────────────────────────────────────
@@ -252,7 +252,6 @@ class MusicManager {
   setVolume(guildId, vol) {
     const queue = this.getQueue(guildId);
     queue.volume = Math.max(0, Math.min(100, vol));
-    this.updatePlayerEmbed(queue);
   }
 
   // ── Stay / Disconnect ──────────────────────────────────────
@@ -282,14 +281,12 @@ class MusicManager {
       }
       queue.tracks = [...queue.tracks.slice(0, queue.currentIndex + 1), ...remaining];
     }
-    this.updatePlayerEmbed(queue);
   }
 
   toggleLoop(guildId) {
     const queue = this.getQueue(guildId);
     const modes = ['off', 'track', 'queue'];
     queue.loop = modes[(modes.indexOf(queue.loop) + 1) % modes.length];
-    this.updatePlayerEmbed(queue);
   }
 
   // ── Back (previous track) ──────────────────────────────────
