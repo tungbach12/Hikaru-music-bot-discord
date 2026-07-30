@@ -56,21 +56,13 @@ function makePipeFast(url) {
  * Encode pipe: yt-dlp → ffmpeg (re-encode to WebM/Opus).
  * Fallback when fast pipe doesn't produce data quickly.
  */
-function makePipeEncode(url, seekSeconds = 0) {
-  const ytdlpArgs = [
+function makePipeEncode(url) {
+  const y = spawn(YTDLP_PATH, [
     '--proxy', WARP_PROXY,
     '-f', 'bestaudio/best',
     '--no-playlist', '--no-warnings',
     '-q', '-o', '-', url,
-  ];
-  // Add seek position via download-sections
-  if (seekSeconds > 0) {
-    const h = String(Math.floor(seekSeconds / 3600)).padStart(2, '0');
-    const m = String(Math.floor((seekSeconds % 3600) / 60)).padStart(2, '0');
-    const s = String(Math.floor(seekSeconds % 60)).padStart(2, '0');
-    ytdlpArgs.splice(-1, 0, '--download-sections', `*${h}:${m}:${s}-`);
-  }
-  const y = spawn(YTDLP_PATH, ytdlpArgs, { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
   const f = spawn(FFmpeg_PATH, [
     '-loglevel', 'error',
