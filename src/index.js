@@ -74,12 +74,16 @@ async function handleCommand(interaction) {
   switch (commandName) {
     // ── /play ──────────────────────────────────────────────
     case 'play': {
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
       const query = interaction.options.getString('query');
 
       try {
         const results = await manager.search(query);
-        if (!results.length) return interaction.editReply('❌ No results found!');
+        if (!results.length) {
+          await interaction.editReply('❌ No results found!');
+          setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+          return;
+        }
 
         const track = results[0];
         track.requestedBy = interaction.user.displayName;
@@ -98,30 +102,37 @@ async function handleCommand(interaction) {
             await entersState(queue.connection, VoiceConnectionStatus.Ready, 20000);
           } catch {
             queue.connection.destroy();
-            return interaction.editReply('❌ Failed to join voice channel!');
+            await interaction.editReply('❌ Failed to join voice channel!');
+            setTimeout(() => interaction.deleteReply().catch(() => {}), 3000);
+            return;
           }
         }
 
         queue.channel = voiceChannel;
-        // Set callback for when queue ends (triggers disconnect timer)
         queue.onIdle = (gid) => scheduleDisconnect(client, gid);
 
         if (!queue.playing) {
-          // First track — send loading embed, then play
-          const msg = await interaction.editReply({
-            embeds: [buildLoadingEmbed(track)],
+          // First track — send MUSIC PANEL as channel message (not interaction reply)
+          const panelEmbed = buildLoadingEmbed(track);
+          const panelMsg = await voiceChannel.guild.channels.cache.get(voiceChannel.id)?.send({
+            embeds: [panelEmbed],
             components: [buildControlRow1(true), buildControlRow2(true)],
           });
-          queue.message = msg;
+          queue.message = panelMsg;
           queue.currentIndex = queue.tracks.length - 1;
+          // Delete interaction reply
+          await interaction.editReply('🎵 Playing!');
+          setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
           manager.play(guild.id);
         } else {
-          // Already playing — show "added to queue"
-          interaction.editReply({ embeds: [buildAddedEmbed(track, queue)] });
+          // Already playing — show ephemeral "added to queue"
+          await interaction.editReply({ embeds: [buildAddedEmbed(track, queue)] });
+          setTimeout(() => interaction.deleteReply().catch(() => {}), 4000);
         }
       } catch (error) {
         console.error('Play error:', error);
-        interaction.editReply(`❌ Error: ${error.message}`);
+        await interaction.editReply(`❌ Error: ${error.message}`);
+        setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
       }
       break;
     }
@@ -196,43 +207,52 @@ async function handleButton(interaction) {
   const queue = manager.getQueue(guild.id);
 
   switch (customId) {
-    case 'vol_down':
-      manager.setVolume(guild.id, queue.volume - 10);
-      break;
-    case 'vol_up':
-      manager.setVolume(guild.id, queue.volume + 10);
-      break;
-    case 'back':
-      manager.back(guild.id);
-      break;
-    case 'skip':
-      manager.skip(guild.id);
-      break;
-    case 'pause':
-      queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
-      break;
-    case 'stop':
-      manager.stop(guild.id);
-      return interaction.reply({ content: '⏹️ Stopped!', ephemeral: true });
-    case 'shuffle':
-      manager.toggleShuffle(guild.id);
-      break;
-    case 'loop':
-      manager.toggleLoop(guild.id);
-      break;
-    case 'stay': {
-      const stayOn = manager.toggleStay(guild.id);
-      return interaction.reply({ content: stayOn ? '🔒 Stay ON' : '🔓 Stay OFF', ephemeral: true });
-    }
-    case 'playlist': {
-      const list = queue.tracks.slice(0, 10).map((t, i) => {
-        const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
-        return `${prefix} ${t.title}`;
-      }).join('\n');
-      return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, ephemeral: true });
-    }
+    case 'seek_back':
+    manager.seek(guild.id, -30);
+    return interaction.reply({ content: '⏪ -30s', ephemeral: true });
+  case 'seek_fwd':
+    manager.seek(guild.id, 30);
+    return interaction.reply({ content: '⏩ +30s', ephemeral: true });
+  case 'vol_down':
+    manager.setVolume(guild.id, queue.volume - 10);
+    return interaction.reply({ content: `🔉 Volume: ${queue.volume}%`, ephemeral: true });
+  case 'vol_up':
+    manager.setVolume(guild.id, queue.volume + 10);
+    return interaction.reply({ content: `🔊 Volume: ${queue.volume}%`, ephemeral: true });
+  case 'back':
+    manager.back(guild.id);
+    break;
+  case 'skip':
+    manager.skip(guild.id);
+    break;
+  case 'pause':
+    queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
+    break;
+  case 'stop':
+    manager.stop(guild.id);
+    return interaction.reply({ content: '⏹️ Stopped!', ephemeral: true });
+  case 'shuffle':
+    manager.toggleShuffle(guild.id);
+    manager.updatePlayerEmbed(queue);
+    return interaction.reply({ content: `🔀 Shuffle ${queue.shuffle ? 'ON' : 'OFF'}`, ephemeral: true });
+  case 'loop':
+    manager.toggleLoop(guild.id);
+    manager.updatePlayerEmbed(queue);
+    return interaction.reply({ content: `🔁 Loop: ${queue.loop}`, ephemeral: true });
+  case 'stay': {
+    manager.toggleStay(guild.id);
+    manager.updatePlayerEmbed(queue);
+    return interaction.reply({ content: queue.stay ? '🔒 Stay ON' : '🔓 Stay OFF', ephemeral: true });
   }
-  interaction.deferUpdate();
+  case 'playlist': {
+    const list = queue.tracks.slice(0, 10).map((t, i) => {
+      const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
+      return `${prefix} ${t.title}`;
+    }).join('\n');
+    return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, ephemeral: true });
+  }
+}
+interaction.deferUpdate();
 }
 
 // ── Events ───────────────────────────────────────────────────

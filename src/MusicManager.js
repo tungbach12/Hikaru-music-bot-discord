@@ -311,7 +311,16 @@ class MusicManager {
     const embed = buildPlayingEmbed(track, queue);
     const row1 = buildControlRow1(false, queue.paused);
     const row2 = buildControlRow2(false, queue.shuffle, queue.loop === 'off', !queue.stay);
-    queue.message.edit({ embeds: [embed], components: [row1, row2] }).catch(() => {});
+    queue.message.edit({ embeds: [embed], components: [row1, row2] }).catch(async (err) => {
+      // Message was deleted — recreate it
+      console.log(`[Panel] Message deleted, recreating...`);
+      if (queue.channel) {
+        try {
+          const newMsg = await queue.channel.send({ embeds: [embed], components: [row1, row2] });
+          queue.message = newMsg;
+        } catch {}
+      }
+    });
   }
 }
 
