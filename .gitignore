@@ -4,5 +4,6 @@ node_modules/
 *.log
 .pm2/
 .idea/
-.vscode/index.js
-test.js
+.vscode/
+/test.js
+/index.js
