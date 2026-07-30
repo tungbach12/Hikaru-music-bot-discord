@@ -125,9 +125,19 @@ async function handleCommand(interaction) {
           setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
           manager.play(guild.id);
         } else {
-          // Already playing — show ephemeral "added to queue"
-          await interaction.editReply({ embeds: [buildAddedEmbed(track, queue)] });
-          setTimeout(() => interaction.deleteReply().catch(() => {}), 4000);
+          // Already playing — delete old panel, send new one at bottom
+          if (queue.message) {
+            queue.message.delete().catch(() => {});
+          }
+          const newPanel = await voiceChannel.guild.channels.cache.get(voiceChannel.id)?.send({
+            embeds: [buildAddedEmbed(track, queue)],
+            components: [buildControlRow1(true), buildControlRow2(true)],
+          });
+          queue.message = newPanel;
+          // Update to playing state after short delay
+          setTimeout(() => manager.updatePlayerEmbedFast(queue), 1000);
+          await interaction.editReply('📋 Added to queue!');
+          setTimeout(() => interaction.deleteReply().catch(() => {}), 2000);
         }
       } catch (error) {
         console.error('Play error:', error);
@@ -208,54 +218,54 @@ async function handleButton(interaction) {
 
   switch (customId) {
     case 'seek_back':
-    manager.seek(guild.id, -30);
-    return interaction.reply({ content: '⏪ -30s', ephemeral: true });
-  case 'seek_fwd':
-    manager.seek(guild.id, 30);
-    return interaction.reply({ content: '⏩ +30s', ephemeral: true });
-  case 'vol_down':
-    manager.setVolume(guild.id, queue.volume - 10);
-    manager.updatePlayerEmbedFast(queue);
-    return interaction.reply({ content: `🔉 Volume: ${queue.volume}%`, ephemeral: true });
-  case 'vol_up':
-    manager.setVolume(guild.id, queue.volume + 10);
-    manager.updatePlayerEmbedFast(queue);
-    return interaction.reply({ content: `🔊 Volume: ${queue.volume}%`, ephemeral: true });
-  case 'back':
-    manager.back(guild.id);
-    break;
-  case 'skip':
-    manager.skip(guild.id);
-    break;
-  case 'pause':
-    queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
-    manager.updatePlayerEmbedFast(queue);
-    return interaction.reply({ content: queue.paused ? '⏸ Paused' : '▶️ Resumed', ephemeral: true });
-  case 'stop':
-    manager.stop(guild.id);
-    return interaction.reply({ content: '⏹️ Stopped!', ephemeral: true });
-  case 'shuffle':
-    manager.toggleShuffle(guild.id);
-    manager.updatePlayerEmbedFast(queue);
-    return interaction.reply({ content: `🔀 Shuffle ${queue.shuffle ? 'ON' : 'OFF'}`, ephemeral: true });
-  case 'loop':
-    manager.toggleLoop(guild.id);
-    manager.updatePlayerEmbedFast(queue);
-    return interaction.reply({ content: `🔁 Loop: ${queue.loop}`, ephemeral: true });
-  case 'stay': {
-    manager.toggleStay(guild.id);
-    manager.updatePlayerEmbedFast(queue);
-    return interaction.reply({ content: queue.stay ? '🔒 Stay ON' : '🔓 Stay OFF', ephemeral: true });
+      manager.seek(guild.id, -30);
+      break;
+    case 'seek_fwd':
+      manager.seek(guild.id, 30);
+      break;
+    case 'vol_down':
+      manager.setVolume(guild.id, queue.volume - 10);
+      manager.updatePlayerEmbedFast(queue);
+      break;
+    case 'vol_up':
+      manager.setVolume(guild.id, queue.volume + 10);
+      manager.updatePlayerEmbedFast(queue);
+      break;
+    case 'back':
+      manager.back(guild.id);
+      break;
+    case 'skip':
+      manager.skip(guild.id);
+      break;
+    case 'pause':
+      queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
+      manager.updatePlayerEmbedFast(queue);
+      break;
+    case 'stop':
+      manager.stop(guild.id);
+      break;
+    case 'shuffle':
+      manager.toggleShuffle(guild.id);
+      manager.updatePlayerEmbedFast(queue);
+      break;
+    case 'loop':
+      manager.toggleLoop(guild.id);
+      manager.updatePlayerEmbedFast(queue);
+      break;
+    case 'stay':
+      manager.toggleStay(guild.id);
+      manager.updatePlayerEmbedFast(queue);
+      break;
+    case 'playlist': {
+      const list = queue.tracks.slice(0, 10).map((t, i) => {
+        const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
+        return `${prefix} ${t.title}`;
+      }).join('\n');
+      return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, ephemeral: true });
+    }
   }
-  case 'playlist': {
-    const list = queue.tracks.slice(0, 10).map((t, i) => {
-      const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
-      return `${prefix} ${t.title}`;
-    }).join('\n');
-    return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, ephemeral: true });
-  }
-}
-interaction.deferUpdate();
+  // Silent update — no message, just acknowledge the interaction
+  interaction.deferUpdate().catch(() => {});
 }
 
 // ── Events ───────────────────────────────────────────────────
