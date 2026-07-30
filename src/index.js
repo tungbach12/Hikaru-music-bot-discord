@@ -116,8 +116,8 @@ async function handleCommand(interaction) {
           queue.currentIndex = queue.tracks.length - 1;
           manager.play(guild.id);
         } else {
-          // Already playing — show "added to queue"
-          interaction.editReply({ embeds: [buildAddedEmbed(track, queue)] });
+          // Already playing — show ephemeral "added to queue" (auto-disappears)
+          interaction.editReply({ embeds: [buildAddedEmbed(track, queue)], ephemeral: true });
         }
       } catch (error) {
         console.error('Play error:', error);
@@ -196,12 +196,18 @@ async function handleButton(interaction) {
   const queue = manager.getQueue(guild.id);
 
   switch (customId) {
+    case 'seek_back':
+      manager.seek(guild.id, -30);
+      return interaction.reply({ content: '⏪ -30s', ephemeral: true });
+    case 'seek_fwd':
+      manager.seek(guild.id, 30);
+      return interaction.reply({ content: '⏩ +30s', ephemeral: true });
     case 'vol_down':
       manager.setVolume(guild.id, queue.volume - 10);
-      break;
+      return interaction.reply({ content: `🔉 Volume: ${queue.volume}%`, ephemeral: true });
     case 'vol_up':
       manager.setVolume(guild.id, queue.volume + 10);
-      break;
+      return interaction.reply({ content: `🔊 Volume: ${queue.volume}%`, ephemeral: true });
     case 'back':
       manager.back(guild.id);
       break;
