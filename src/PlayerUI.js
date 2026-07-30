@@ -63,11 +63,11 @@ function buildQueueEmbed(queue) {
 
 function buildControlRow1(disabled = false, paused = false) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('vol_down').setLabel('🔉').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('seek_back').setLabel('⏪').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('back').setLabel('⏮').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('pause').setLabel(paused ? '▶️' : '⏸️').setStyle(ButtonStyle.Primary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('skip').setLabel('⏭').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('vol_up').setLabel('🔊').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('seek_fwd').setLabel('⏩').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
   );
 }
 
