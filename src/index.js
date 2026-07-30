@@ -9,6 +9,34 @@ const {
 } = require('./PlayerUI');
 
 const manager = new MusicManager();
+const DISCONNECT_TIMEOUT_MS = 30_000; // 30 seconds before leaving empty channel
+const disconnectTimers = new Map(); // guildId -> setTimeout
+
+function scheduleDisconnect(client, guildId) {
+  if (disconnectTimers.has(guildId)) return;
+  const timer = setTimeout(async () => {
+    disconnectTimers.delete(guildId);
+    const queue = manager.queues.get(guildId);
+    if (!queue || queue.stay || queue.playing) return;
+    // Check again: if still empty, disconnect
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return;
+    const vc = guild.channels.cache.get(queue.channel?.id);
+    const botMember = guild.members.cache.get(client.user.id);
+    if (vc && botMember && vc.members.filter(m => !m.user.bot).size === 0) {
+      console.log(`[Disconnect] ${guildId} — channel empty for ${DISCONNECT_TIMEOUT_MS / 1000}s`);
+      await manager.stop(guildId);
+    }
+  }, DISCONNECT_TIMEOUT_MS);
+  disconnectTimers.set(guildId, timer);
+}
+
+function cancelDisconnect(guildId) {
+  if (disconnectTimers.has(guildId)) {
+    clearTimeout(disconnectTimers.get(guildId));
+    disconnectTimers.delete(guildId);
+  }
+}
 
 const client = new Client({
   intents: [
@@ -75,6 +103,8 @@ async function handleCommand(interaction) {
         }
 
         queue.channel = voiceChannel;
+        // Set callback for when queue ends (triggers disconnect timer)
+        queue.onIdle = (gid) => scheduleDisconnect(client, gid);
 
         if (!queue.playing) {
           // First track — send loading embed, then play
@@ -148,6 +178,14 @@ async function handleCommand(interaction) {
       manager.toggleLoop(guild.id);
       interaction.reply(`🔁 Loop: ${manager.getQueue(guild.id).loop}`);
       break;
+
+    case 'stay': {
+      const stayOn = manager.toggleStay(guild.id);
+      interaction.reply(stayOn
+        ? '🔒 Stay ON — bot stays in voice channel indefinitely'
+        : '🔓 Stay OFF — bot leaves when channel is empty or queue ends');
+      break;
+    }
   }
 }
 
@@ -210,6 +248,41 @@ client.on('interactionCreate', async (interaction) => {
     else if (interaction.isButton()) await handleButton(interaction);
   } catch (error) {
     console.error('Interaction error:', error);
+  }
+});
+
+// ── Voice state: detect empty channel → auto-disconnect ──────
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const guildId = oldState.guild?.id || newState.guild?.id;
+  if (!guildId) return;
+  const queue = manager.queues.get(guildId);
+  if (!queue) return;
+
+  // Bot was moved to another channel
+  if (oldState.channelId !== newState.channelId) {
+    if (newState.id === client.user.id) {
+      // Bot moved — update channel reference
+      queue.channel = newState.channel;
+    }
+  }
+
+  // Someone left a channel the bot is in
+  if (oldState.channelId && oldState.channelId === queue.channel?.id) {
+    const channel = oldState.guild.channels.cache.get(oldState.channelId);
+    if (!channel) return;
+    const humans = channel.members.filter(m => !m.user.bot).size;
+    if (humans === 0 && !queue.stay && !queue.playing) {
+      console.log(`[VoiceState] Channel empty, scheduling disconnect in ${DISCONNECT_TIMEOUT_MS / 1000}s`);
+      scheduleDisconnect(client, guildId);
+    }
+  }
+
+  // Someone joined — cancel pending disconnect
+  if (newState.channelId && newState.channelId === queue.channel?.id) {
+    if (newState.id !== client.user.id) {
+      cancelDisconnect(guildId);
+    }
   }
 });
 

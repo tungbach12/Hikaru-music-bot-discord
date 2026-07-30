@@ -21,6 +21,7 @@ const commands = [
     .addIntegerOption(opt => opt.setName('level').setDescription('Volume level 0-100').setRequired(true).setMinValue(0).setMaxValue(100)),
   new SlashCommandBuilder().setName('shuffle').setDescription('Toggle shuffle'),
   new SlashCommandBuilder().setName('loop').setDescription('Toggle loop (off/track/queue)'),
+  new SlashCommandBuilder().setName('stay').setDescription('Toggle stay in voice channel after queue ends'),
 ];
 
 module.exports = commands;

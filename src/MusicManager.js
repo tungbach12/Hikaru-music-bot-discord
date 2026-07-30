@@ -24,6 +24,7 @@ class MusicManager {
       this.queues.set(guildId, {
         tracks: [], currentIndex: -1, volume: DEFAULT_VOLUME,
         loop: 'off', shuffle: false, autoplay: false,
+        stay: false,
         connection: null, channel: null, message: null,
         playing: false, paused: false,
       });
@@ -55,8 +56,12 @@ class MusicManager {
     });
 
     player.on(AudioPlayerStatus.Idle, () => {
-      console.log(`[${guildId}] Track ended cleanly`);
-      this.killProc(guildId).then(() => this.playNext(guildId));
+      const queue = this.getQueue(guildId);
+      console.log(`[${guildId}] Track ended, loop=${queue.loop}, index=${queue.currentIndex}`);
+      this.killProc(guildId).then(() => {
+        if (queue.loop !== 'track') queue.currentIndex++;
+        this.playNext(guildId);
+      });
     });
 
     player.on('error', (err) => {
@@ -111,15 +116,17 @@ class MusicManager {
   async playNext(guildId) {
     const queue = this.getQueue(guildId);
 
-    // Bounds check
+    // Bounds check — queue empty or all tracks played
     if (queue.tracks.length === 0 || queue.currentIndex >= queue.tracks.length) {
-      if (queue.loop === 'queue' && queue.tracks.length > 0) {
-        queue.currentIndex = 0;
-      } else {
-        queue.playing = false;
-        this.updatePlayerEmbed(queue);
-        return;
-      }
+    if (queue.loop === 'queue' && queue.tracks.length > 0) {
+      queue.currentIndex = 0;
+    } else {
+      queue.playing = false;
+      this.updatePlayerEmbed(queue);
+      // Schedule disconnect if not staying
+      if (!queue.stay && queue.onIdle) queue.onIdle(guildId);
+      return;
+    }
     }
 
     // Shuffle
@@ -218,13 +225,12 @@ class MusicManager {
     queue.currentIndex = -1;
     queue.playing = false;
     queue.paused = false;
+    queue.stay = false;
     await this.killProc(guildId);
     const player = this.players.get(guildId);
     if (player) player.stop(true);
     if (queue.connection) { queue.connection.destroy(); queue.connection = null; }
-    this.queues.delete(guildId);
-    this.players.delete(guildId);
-    this.procs.delete(guildId);
+    this.disconnect(guildId);
   }
 
   // ── Pause / Resume ─────────────────────────────────────────
@@ -247,6 +253,20 @@ class MusicManager {
     const queue = this.getQueue(guildId);
     queue.volume = Math.max(0, Math.min(100, vol));
     this.updatePlayerEmbed(queue);
+  }
+
+  // ── Stay / Disconnect ──────────────────────────────────────
+
+  toggleStay(guildId) {
+    const queue = this.getQueue(guildId);
+    queue.stay = !queue.stay;
+    return queue.stay;
+  }
+
+  disconnect(guildId) {
+    this.queues.delete(guildId);
+    this.players.delete(guildId);
+    this.procs.delete(guildId);
   }
 
   // ── Shuffle / Loop ─────────────────────────────────────────

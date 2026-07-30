@@ -10,6 +10,7 @@ function formatTime(s) {
 
 function buildPlayingEmbed(track, queue) {
   const loopEmoji = queue.loop === 'track' ? '🔂' : queue.loop === 'queue' ? '🔁' : '➡️';
+  const stayEmoji = queue.stay ? '🔒 Stay' : '🔓 Auto-Leave';
   return new EmbedBuilder()
     .setColor(BLUE)
     .setTitle('🎵 MUSIC PANEL')
@@ -21,7 +22,7 @@ function buildPlayingEmbed(track, queue) {
     )
     .setThumbnail(track.thumbnail)
     .setFooter({
-      text: `Queue: ${queue.currentIndex + 1}/${queue.tracks.length} | Volume: ${queue.volume}% | ${loopEmoji} Loop: ${queue.loop}`,
+      text: `Queue: ${queue.currentIndex + 1}/${queue.tracks.length} | Volume: ${queue.volume}% | ${loopEmoji} Loop: ${queue.loop} | ${stayEmoji}`,
     })
     .setTimestamp();
 }
