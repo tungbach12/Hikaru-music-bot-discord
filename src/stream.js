@@ -1,5 +1,18 @@
 const { spawn } = require('child_process');
-const { WARP_PROXY, YTDLP_PATH, FFmpeg_PATH, CHILD_ENV, YTDL_TIMEOUT_MS } = require('./config');
+const { WARP_PROXY, YTDLP_PATH, FFmpeg_PATH, CHILD_ENV, YTDL_TIMEOUT_MS, YTDL_COOKIES, YTDL_USER_AGENT, YTDL_COOKIES_FROM_BROWSER } = require('./config');
+
+function ytdlpBaseArgs() {
+  const args = [
+    '--proxy', WARP_PROXY,
+    '--no-warnings',
+    '-q',
+    '-o', '-',
+  ];
+  if (YTDL_COOKIES) args.push('--cookies', YTDL_COOKIES);
+  else if (YTDL_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
+  if (YTDL_USER_AGENT) args.push('--user-agent', YTDL_USER_AGENT);
+  return args;
+}
 
 /**
  * Suppress harmless pipe errors (EPIPE, ECONNRESET, premature close)
@@ -23,10 +36,9 @@ function swallowPipeErr(e) {
  */
 function makePipeFast(url) {
   const y = spawn(YTDLP_PATH, [
-    '--proxy', WARP_PROXY,
+    ...ytdlpBaseArgs(),
     '-f', 'bestaudio[acodec=opus][ext=webm]/bestaudio[acodec=opus]',
-    '--no-playlist', '--no-warnings',
-    '-q', '-o', '-', url,
+    '--no-playlist', url,
   ], { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
   y.stderr.on('data', (d) => console.log(`[yt-dlp fast] ${d}`));
@@ -58,10 +70,9 @@ function makePipeFast(url) {
  */
 function makePipeEncode(url) {
   const y = spawn(YTDLP_PATH, [
-    '--proxy', WARP_PROXY,
+    ...ytdlpBaseArgs(),
     '-f', 'bestaudio/best',
-    '--no-playlist', '--no-warnings',
-    '-q', '-o', '-', url,
+    '--no-playlist', url,
   ], { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
   const f = spawn(FFmpeg_PATH, [

@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, Partials, MessageFlags } = require('discord.js');
 const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { TOKEN, CLIENT_ID, BLUE } = require('./config');
 const commands = require('./commands/index');
@@ -68,13 +68,13 @@ async function handleCommand(interaction) {
   const voiceChannel = member.voice.channel;
 
   if (!voiceChannel && commandName !== 'help') {
-    return interaction.reply({ content: '❌ You need to be in a voice channel!', ephemeral: true });
+    return interaction.reply({ content: '❌ You need to be in a voice channel!', flags: MessageFlags.Ephemeral });
   }
 
   switch (commandName) {
     // ── /play ──────────────────────────────────────────────
     case 'play': {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const query = interaction.options.getString('query');
 
       try {
@@ -179,7 +179,7 @@ async function handleCommand(interaction) {
         return interaction.reply('❌ Nothing playing!');
       }
       manager.updatePlayerEmbed(queue);
-      interaction.reply({ content: '🎵 Now playing:', ephemeral: true });
+      interaction.reply({ content: '🎵 Now playing:', flags: MessageFlags.Ephemeral });
       break;
     }
 
@@ -261,7 +261,7 @@ async function handleButton(interaction) {
         const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
         return `${prefix} ${t.title}`;
       }).join('\n');
-      return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, ephemeral: true });
+      return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, flags: MessageFlags.Ephemeral });
     }
   }
   // Silent update — no message, just acknowledge the interaction
