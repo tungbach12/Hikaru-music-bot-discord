@@ -33,13 +33,19 @@ function swallowPipeErr(e) {
 /**
  * Fast pipe: yt-dlp outputs WebM/Opus directly (no ffmpeg re-encode).
  * Resolves true if data arrives within 300ms, false otherwise.
+ * @param {string} url - media URL
+ * @param {number} start - seek offset in seconds (0 = from beginning)
  */
-function makePipeFast(url) {
-  const y = spawn(YTDLP_PATH, [
+function makePipeFast(url, start = 0) {
+  const args = [
     ...ytdlpBaseArgs(),
     '-f', 'bestaudio[acodec=opus][ext=webm]/bestaudio[acodec=opus]',
-    '--no-playlist', url,
-  ], { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
+    '--no-playlist',
+  ];
+  if (start > 0) args.push('--download-sections', `*${start}-`);
+  args.push(url);
+
+  const y = spawn(YTDLP_PATH, args, { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
   y.stderr.on('data', (d) => console.log(`[yt-dlp fast] ${d}`));
 
@@ -67,13 +73,19 @@ function makePipeFast(url) {
 /**
  * Encode pipe: yt-dlp → ffmpeg (re-encode to WebM/Opus).
  * Fallback when fast pipe doesn't produce data quickly.
+ * @param {string} url - media URL
+ * @param {number} start - seek offset in seconds (0 = from beginning)
  */
-function makePipeEncode(url) {
-  const y = spawn(YTDLP_PATH, [
+function makePipeEncode(url, start = 0) {
+  const args = [
     ...ytdlpBaseArgs(),
     '-f', 'bestaudio/best',
-    '--no-playlist', url,
-  ], { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
+    '--no-playlist',
+  ];
+  if (start > 0) args.push('--download-sections', `*${start}-`);
+  args.push(url);
+
+  const y = spawn(YTDLP_PATH, args, { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
   const f = spawn(FFmpeg_PATH, [
     '-loglevel', 'error',

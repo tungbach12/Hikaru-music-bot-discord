@@ -27,6 +27,7 @@ class MusicManager {
         stay: false,
         connection: null, channel: null, message: null,
         playing: false, paused: false,
+        seekTo: 0, seekPending: false, trackStartedAt: 0,
       });
     }
     return this.queues.get(guildId);
@@ -59,6 +60,11 @@ class MusicManager {
       const queue = this.getQueue(guildId);
       console.log(`[${guildId}] Track ended, loop=${queue.loop}, index=${queue.currentIndex}`);
       this.killProc(guildId).then(() => {
+        // Seek replay: keep current index (don't advance) — playNext restarts same track at seekTo
+        if (queue.seekPending) {
+          this.playNext(guildId);
+          return;
+        }
         if (queue.loop !== 'track') queue.currentIndex++;
         this.playNext(guildId);
       });
@@ -155,8 +161,14 @@ class MusicManager {
     try {
       await this.killProc(guildId);
 
+      // Seek offset: if a seek is pending, restart same track from seekTo position
+      const startSec = queue.seekPending ? queue.seekTo : 0;
+      queue.seekTo = startSec;  // keep seek base for getPosition; 0 for fresh tracks
+      queue.seekPending = false;
+      queue.trackStartedAt = Date.now();
+
       // Two-pipe: fast → fallback
-      const fast = makePipeFast(url);
+      const fast = makePipeFast(url, startSec);
       const okFast = await fast.ready;
       let pipe, inputType;
 
@@ -165,7 +177,7 @@ class MusicManager {
         inputType = fast.type;
       } else {
         await fast.killAll();
-        const enc = makePipeEncode(url);
+        const enc = makePipeEncode(url, startSec);
         pipe = { ytdlp: enc.ytdlp, ffmpeg: enc.ffmpeg, stdout: enc.stdout };
         inputType = enc.type;
       }
@@ -207,14 +219,54 @@ class MusicManager {
   async play(guildId) { return this.playNext(guildId); }
 
   // ── Skip (explicit: killProc → stop → playNext) ────────────
+  // Returns { ok, message } so the UI can tell the user when the queue is empty.
 
   async skip(guildId) {
     console.log(`[Player] Skip called`);
+    const queue = this.getQueue(guildId);
+    if (queue.tracks.length === 0) {
+      return { ok: false, message: 'Queue trống — thêm bài trước đã!' };
+    }
+    const isLast = queue.currentIndex >= queue.tracks.length - 1;
+    if (isLast && queue.loop !== 'queue') {
+      return { ok: false, message: 'Đã hết queue — bật Loop 🔁 hoặc thêm bài mới.' };
+    }
+    queue.seekTo = 0;
+    queue.seekPending = false;
     await this.killProc(guildId);
     const player = this.players.get(guildId);
     if (player) player.stop(true);
-    this.getQueue(guildId).currentIndex++;
+    queue.currentIndex++;
     await this.playNext(guildId);
+    return { ok: true, message: '⏭ Đã skip' };
+  }
+
+  // ── Seek (relative ± seconds; restarts current track at new position) ──
+  // Returns { ok, position, duration } — position is the new playback position.
+
+  async seek(guildId, deltaSeconds) {
+    const queue = this.getQueue(guildId);
+    const track = queue.tracks[queue.currentIndex];
+    if (!track || !queue.playing) {
+      return { ok: false, message: 'Không có bài đang phát để seek.' };
+    }
+    const duration = track.duration || 0;
+    const current = this.getPosition(guildId);
+    const target = Math.max(0, duration > 0 ? Math.min(current + deltaSeconds, duration) : current + deltaSeconds);
+    queue.seekTo = target;
+    queue.seekPending = true;
+    await this.killProc(guildId);
+    const player = this.players.get(guildId);
+    if (player) player.stop(true);
+    return { ok: true, position: target, duration };
+  }
+
+  // Current playback position in seconds (seek base + time since stream start)
+
+  getPosition(guildId) {
+    const queue = this.getQueue(guildId);
+    const elapsed = queue.trackStartedAt ? (Date.now() - queue.trackStartedAt) / 1000 : 0;
+    return (queue.seekTo || 0) + Math.max(0, elapsed);
   }
 
   // ── Stop ───────────────────────────────────────────────────

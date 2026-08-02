@@ -216,56 +216,77 @@ async function handleButton(interaction) {
   const { customId, guild } = interaction;
   const queue = manager.getQueue(guild.id);
 
-  switch (customId) {
-    case 'seek_back':
-      manager.seek(guild.id, -30);
-      break;
-    case 'seek_fwd':
-      manager.seek(guild.id, 30);
-      break;
-    case 'vol_down':
-      manager.setVolume(guild.id, queue.volume - 10);
-      manager.updatePlayerEmbedFast(queue);
-      break;
-    case 'vol_up':
-      manager.setVolume(guild.id, queue.volume + 10);
-      manager.updatePlayerEmbedFast(queue);
-      break;
-    case 'back':
-      manager.back(guild.id);
-      break;
-    case 'skip':
-      manager.skip(guild.id);
-      break;
-    case 'pause':
-      queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
-      manager.updatePlayerEmbedFast(queue);
-      break;
-    case 'stop':
-      manager.stop(guild.id);
-      break;
-    case 'shuffle':
-      manager.toggleShuffle(guild.id);
-      manager.updatePlayerEmbedFast(queue);
-      break;
-    case 'loop':
-      manager.toggleLoop(guild.id);
-      manager.updatePlayerEmbedFast(queue);
-      break;
-    case 'stay':
-      manager.toggleStay(guild.id);
-      manager.updatePlayerEmbedFast(queue);
-      break;
-    case 'playlist': {
-      const list = queue.tracks.slice(0, 10).map((t, i) => {
-        const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
-        return `${prefix} ${t.title}`;
-      }).join('\n');
-      return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, flags: MessageFlags.Ephemeral });
+  try {
+    switch (customId) {
+      case 'seek_back': {
+        const r = await manager.seek(guild.id, -30);
+        if (!r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
+        return interaction.reply({
+          content: `⏪ −30s → **${formatTime(r.position)}** / ${formatTime(r.duration)}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      case 'seek_fwd': {
+        const r = await manager.seek(guild.id, 30);
+        if (!r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
+        return interaction.reply({
+          content: `⏩ +30s → **${formatTime(r.position)}** / ${formatTime(r.duration)}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      case 'vol_down':
+        manager.setVolume(guild.id, queue.volume - 10);
+        manager.updatePlayerEmbedFast(queue);
+        break;
+      case 'vol_up':
+        manager.setVolume(guild.id, queue.volume + 10);
+        manager.updatePlayerEmbedFast(queue);
+        break;
+      case 'back':
+        manager.back(guild.id);
+        break;
+      case 'skip': {
+        const r = await manager.skip(guild.id);
+        if (!r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
+        break;
+      }
+      case 'pause':
+        queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
+        manager.updatePlayerEmbedFast(queue);
+        break;
+      case 'stop':
+        manager.stop(guild.id);
+        break;
+      case 'shuffle':
+        manager.toggleShuffle(guild.id);
+        manager.updatePlayerEmbedFast(queue);
+        break;
+      case 'loop':
+        manager.toggleLoop(guild.id);
+        manager.updatePlayerEmbedFast(queue);
+        break;
+      case 'stay':
+        manager.toggleStay(guild.id);
+        manager.updatePlayerEmbedFast(queue);
+        break;
+      case 'playlist': {
+        const list = queue.tracks.slice(0, 10).map((t, i) => {
+          const prefix = i === queue.currentIndex ? '▶️' : `${i + 1}.`;
+          return `${prefix} ${t.title}`;
+        }).join('\n');
+        return interaction.reply({ content: `📋 **Queue:**\n${list || 'Empty'}`, flags: MessageFlags.Ephemeral });
+      }
+      default:
+        console.warn(`[button] Unknown customId: ${customId}`);
     }
+    // Silent update — no message, just acknowledge the interaction
+    await interaction.deferUpdate().catch(() => {});
+  } catch (error) {
+    console.error('Button error:', error);
+    // Never leave the interaction hanging — reply with the error
+    interaction.reply({ content: `⚠️ Lỗi: ${error.message || 'unknown'}`, flags: MessageFlags.Ephemeral })
+      .catch(() => interaction.deferUpdate().catch(() => {}));
   }
-  // Silent update — no message, just acknowledge the interaction
-  interaction.deferUpdate().catch(() => {});
 }
 
 // ── Events ───────────────────────────────────────────────────
