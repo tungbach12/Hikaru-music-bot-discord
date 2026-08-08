@@ -24,7 +24,7 @@ class MusicManager {
       this.queues.set(guildId, {
         tracks: [], currentIndex: -1, volume: DEFAULT_VOLUME,
         loop: 'off', shuffle: false, autoplay: false,
-        stay: false,
+        stay: true,
         connection: null, channel: null, message: null,
         playing: false, paused: false,
         seekTo: 0, seekPending: false, trackStartedAt: 0,

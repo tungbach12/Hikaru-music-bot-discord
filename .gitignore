@@ -1,9 +1,4 @@
-node_modules/
 .env
-.DS_Store
+cookies.txt
 *.log
-.pm2/
-.idea/
-.vscode/
-/test.js
-/index.js
+node_modules/
