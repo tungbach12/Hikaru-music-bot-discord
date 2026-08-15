@@ -97,10 +97,12 @@ class MusicManager {
       if (YTDL_COOKIES) cookieArgs.push('--cookies', YTDL_COOKIES);
       else if (YTDL_COOKIES_FROM_BROWSER) cookieArgs.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
       if (YTDL_USER_AGENT) cookieArgs.push('--user-agent', YTDL_USER_AGENT);
+      const searchArgs = ['--dump-json', '--no-playlist'];
+      if (WARP_PROXY) searchArgs.push('--proxy', WARP_PROXY);
       const args = [
-        '--proxy', WARP_PROXY, '--dump-json', '--no-playlist',
+        ...searchArgs,
         '--default-search', 'ytsearch5', '--no-warnings',
-        '--extractor-args', 'youtube:player_client=web,android,mweb',
+        '--extractor-args', 'youtube:player_client=android,web,mweb',
         ...cookieArgs,
       ];
       args.push(query.match(/^https?:\/\//) ? query : `ytsearch5:${query}`);

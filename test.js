@@ -59,7 +59,7 @@ test('load: commands/index.js', () => { commands = require('./src/commands/index
 console.log('\n⚙️ Config');
 test('config.TOKEN exists', () => assert(typeof config.TOKEN === 'string' && config.TOKEN.length > 0, 'TOKEN missing'));
 test('config.CLIENT_ID exists', () => assert(typeof config.CLIENT_ID === 'string' && config.CLIENT_ID.length > 0, 'CLIENT_ID missing'));
-test('config.WARP_PROXY default', () => assert(config.WARP_PROXY.includes('socks5'), 'WARP_PROXY wrong'));
+test('config.WARP_PROXY default (empty=direct egress, socks5 legacy OK)', () => assert(config.WARP_PROXY === '' || config.WARP_PROXY.includes('socks5'), 'WARP_PROXY wrong'));
 test('config.BLUE is number', () => assert(typeof config.BLUE === 'number', 'BLUE wrong'));
 test('config.DEFAULT_VOLUME is 80', () => assert(config.DEFAULT_VOLUME === 80, 'DEFAULT_VOLUME wrong'));
 

@@ -3,7 +3,11 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 module.exports = {
   TOKEN: process.env.DISCORD_TOKEN,
   CLIENT_ID: process.env.CLIENT_ID,
-  WARP_PROXY: process.env.WARP_PROXY || 'socks5://127.0.0.1:40000',
+  // WARP_PROXY: empty string = disable proxy (direct egress).
+  // Only fall back to the socks default when the var is entirely unset.
+  WARP_PROXY: process.env.WARP_PROXY === undefined || process.env.WARP_PROXY === null
+    ? 'socks5://127.0.0.1:40000'
+    : process.env.WARP_PROXY,
   YTDLP_PATH: process.env.YTDLP_PATH || 'yt-dlp',
   FFmpeg_PATH: process.env.FFMPEG_PATH || 'ffmpeg',
   YTDL_COOKIES: process.env.YTDL_COOKIES || '',
@@ -17,5 +21,7 @@ module.exports = {
   MAX_QUEUE: 100,
   BLUE: 0x00b0f4,
   DARK: 0x1a1a2e,
-  YTDL_TIMEOUT_MS: 300,
+  // Read from .env, default 10000 (10s) — NOT hardcoded 300 (which broke
+  // ready for any stream taking >300ms to first byte → always fallback).
+  YTDL_TIMEOUT_MS: Number(process.env.YTDL_TIMEOUT_MS) || 10000,
 };

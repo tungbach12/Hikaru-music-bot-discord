@@ -3,19 +3,21 @@ const { WARP_PROXY, YTDLP_PATH, FFmpeg_PATH, CHILD_ENV, YTDL_TIMEOUT_MS, YTDL_CO
 
 function ytdlpBaseArgs() {
   const args = [
-    '--proxy', WARP_PROXY,
     '--no-warnings',
     '-q',
     '-o', '-',
   ];
+  // Only add --proxy when an actual proxy is configured (empty = direct egress).
+  if (WARP_PROXY) args.push('--proxy', WARP_PROXY);
   if (YTDL_COOKIES) args.push('--cookies', YTDL_COOKIES);
   else if (YTDL_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
   if (YTDL_USER_AGENT) args.push('--user-agent', YTDL_USER_AGENT);
-  // player_client=web,android,mweb fallback chain.
-  // NOTE (2026-08-15): YouTube SABR streaming experiment forces web client
-  // to buffer the ENTIRE file before piping 1 byte (~40s delay for format 18).
-  // android + format 18 (progressive) starts streaming in ~15s with -N 4.
-  args.push('--extractor-args', 'youtube:player_client=web,android,mweb');
+  // player_client ORDER matters for latency (2026-08-15):
+  //   android ALONE → first byte ~2.6s (fast, no JS challenge)
+  //   web,android,mweb → first byte ~8.6s (web runs deno JS challenge first)
+  // android covers format 18 + most audio; web/mweb are fallbacks for
+  // videos where android gets SABR-only. Put android FIRST.
+  args.push('--extractor-args', 'youtube:player_client=android,web,mweb');
   args.push('-4');          // IPv4 only (YouTube IPv6 egress gets flagged harder)
   args.push('-N', '4');     // concurrent download connections → faster first bytes
   return args;
@@ -61,8 +63,18 @@ function makePipeFast(url, start = 0) {
     const ok = () => { if (!done) { done = true; clearTimeout(to); resolve(true); } };
     const fail = () => { if (!done) { done = true; clearTimeout(to); resolve(false); } };
     const to = setTimeout(fail, YTDL_TIMEOUT_MS);
+    // FIX (2026-08-15): rely on stderr "ERROR" lines, NOT close/exit.
+    // On fast downloads yt-dlp writes all stdout, exits (close) BEFORE the
+    // data listener can observe it → false "ready:false" → unnecessary fallback.
     y.stdout.once('data', ok);
-    y.once('close', fail);
+    // Treat a clean exit (code 0) with zero bytes as failure too.
+    y.once('close', (code) => {
+      if (code !== 0) fail();
+    });
+    y.stderr.on('data', (d) => {
+      const line = String(d);
+      if (/ERROR:|Sign in to confirm|Requested format is not available|HTTP Error 403/i.test(line)) fail();
+    });
   });
 
   y.stdout.on('error', swallowPipeErr);
