@@ -3,6 +3,7 @@ const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@disco
 const { TOKEN, CLIENT_ID, BLUE } = require('./config');
 const commands = require('./commands/index');
 const MusicManager = require('./MusicManager');
+const { loadState, saveState } = require('./state');
 const {
   formatTime, buildPlayingEmbed, buildLoadingEmbed, buildAddedEmbed,
   buildQueueEmbed, buildControlRow1, buildControlRow2,
@@ -14,6 +15,9 @@ const disconnectTimers = new Map(); // guildId -> setTimeout
 
 function scheduleDisconnect(client, guildId) {
   if (disconnectTimers.has(guildId)) return;
+  const queue = manager.queues.get(guildId);
+  // Stay ON → never schedule a disconnect. User: "stay instead of disconnect."
+  if (!queue || queue.stay) return;
   const timer = setTimeout(async () => {
     disconnectTimers.delete(guildId);
     const queue = manager.queues.get(guildId);
@@ -110,6 +114,14 @@ async function handleCommand(interaction) {
 
         queue.channel = voiceChannel;
         queue.onIdle = (gid) => scheduleDisconnect(client, gid);
+        // Persist channelId so a Stay ON bot can re-join after restart.
+        // ALWAYS create/write the entry (state.json may be empty on first use).
+        const savedJoin = loadState();
+        savedJoin[guild.id] = {
+          stay: queue.stay !== false,            // keep explicit OFF, else default ON
+          channelId: voiceChannel.id,
+        };
+        saveState(savedJoin);
 
         if (!queue.playing) {
           // First track — send MUSIC PANEL as channel message (not interaction reply)
@@ -152,10 +164,13 @@ async function handleCommand(interaction) {
       interaction.reply('⏭️ Skipped!');
       break;
 
-    case 'stop':
-      manager.stop(guild.id);
-      interaction.reply('⏹️ Stopped and cleared queue!');
+    case 'stop': {
+      const r = await manager.stop(guild.id);
+      interaction.reply(r && !r.left
+        ? (r.message || '⏹ Queue cleared — bot stays (Stay ON). Press Stop again to leave.')
+        : '⏹️ Stopped and cleared queue!');
       break;
+    }
 
     case 'pause':
       manager.pause(guild.id);
@@ -202,6 +217,9 @@ async function handleCommand(interaction) {
 
     case 'stay': {
       const stayOn = manager.toggleStay(guild.id);
+      const savedState = loadState();
+      savedState[guild.id] = { stay: stayOn, channelId: queue.channel?.id || null };
+      saveState(savedState);
       interaction.reply(stayOn
         ? '🔒 Stay ON — bot stays in voice channel indefinitely'
         : '🔓 Stay OFF — bot leaves when channel is empty or queue ends');
@@ -254,9 +272,14 @@ async function handleButton(interaction) {
         queue.paused ? manager.resume(guild.id) : manager.pause(guild.id);
         manager.updatePlayerEmbedFast(queue);
         break;
-      case 'stop':
-        manager.stop(guild.id);
+      case 'stop': {
+        const r = await manager.stop(guild.id);
+        if (r && !r.left) {
+          // Stay ON — queue cleared but bot remains. Tell the user.
+          return interaction.reply({ content: r.message || '⏹ Queue cleared — bot stays.', flags: MessageFlags.Ephemeral });
+        }
         break;
+      }
       case 'shuffle':
         manager.toggleShuffle(guild.id);
         manager.updatePlayerEmbedFast(queue);
@@ -268,6 +291,10 @@ async function handleButton(interaction) {
       case 'stay':
         manager.toggleStay(guild.id);
         manager.updatePlayerEmbedFast(queue);
+        // Persist stay state (survives PM2 restarts)
+        const saved2 = loadState();
+        saved2[guild.id] = { stay: queue.stay, channelId: queue.channel?.id || null };
+        saveState(saved2);
         break;
       case 'playlist': {
         const list = queue.tracks.slice(0, 10).map((t, i) => {
@@ -294,6 +321,13 @@ async function handleButton(interaction) {
 client.once('clientReady', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   console.log(`🎵 Hikaru Music Bot is online!`);
+  // Stay state auto-restored per-guild via getQueue() in MusicManager.
+  // Re-join voice channels that had Stay ON before the restart.
+  const saved = loadState();
+  const gids = Object.keys(saved).filter(g => saved[g]?.stay === false);
+  if (gids.length) console.log(`[state] ${gids.length} guild(s) with Stay OFF restored`);
+  const rejoined = await manager.rejoinSavedChannel(client, saved);
+  if (rejoined > 0) console.log(`[state] Re-joined ${rejoined} voice channel(s) (Stay ON)`);
   await registerCommands();
 });
 
@@ -317,8 +351,12 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   // Bot was moved to another channel
   if (oldState.channelId !== newState.channelId) {
     if (newState.id === client.user.id) {
-      // Bot moved — update channel reference
+      // Bot moved — update channel reference + persist new channelId
       queue.channel = newState.channel;
+      if (queue.stay && newState.channelId) {
+        const sv = loadState();
+        if (sv[guildId]) { sv[guildId].channelId = newState.channelId; saveState(sv); }
+      }
     }
   }
 

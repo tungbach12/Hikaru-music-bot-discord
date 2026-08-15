@@ -123,4 +123,4 @@ function makePipeEncode(url, start = 0) {
   return { ytdlp: y, ffmpeg: f, stdout: f.stdout, killAll, type: 'WebmOpus' };
 }
 
-module.exports = { swallowPipeErr, makePipeFast, makePipeEncode };
+module.exports = { swallowPipeErr, makePipeFast, makePipeEncode, ytdlpBaseArgs };

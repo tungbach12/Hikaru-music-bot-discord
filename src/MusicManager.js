@@ -2,10 +2,12 @@ const { spawn } = require('child_process');
 const {
   createAudioPlayer, createAudioResource, NoSubscriberBehavior,
   AudioPlayerStatus, VoiceConnectionStatus, entersState, StreamType,
+  joinVoiceChannel,
 } = require('@discordjs/voice');
-const { WARP_PROXY, YTDLP_PATH, CHILD_ENV, DEFAULT_VOLUME } = require('./config');
+const { WARP_PROXY, YTDLP_PATH, CHILD_ENV, DEFAULT_VOLUME, YTDL_COOKIES, YTDL_COOKIES_FROM_BROWSER, YTDL_USER_AGENT } = require('./config');
 const { swallowPipeErr, makePipeFast, makePipeEncode } = require('./stream');
 const { buildPlayingEmbed, buildControlRow1, buildControlRow2 } = require('./PlayerUI');
+const { loadState } = require('./state');
 
 // StreamType mapping
 const STREAM_TYPES = { WebmOpus: StreamType.WebmOpus, OggOpus: StreamType.OggOpus, Arbitrary: StreamType.Arbitrary };
@@ -29,6 +31,11 @@ class MusicManager {
         playing: false, paused: false,
         seekTo: 0, seekPending: false, trackStartedAt: 0,
       });
+      // Restore persisted stay state (survives PM2 restarts)
+      const saved = loadState();
+      if (saved && typeof saved[guildId]?.stay === 'boolean') {
+        this.queues.get(guildId).stay = saved[guildId].stay;
+      }
     }
     return this.queues.get(guildId);
   }
@@ -85,9 +92,15 @@ class MusicManager {
 
   async search(query) {
     return new Promise((resolve, reject) => {
+      // Cookies flags only (no -o - for dump-json search)
+      const cookieArgs = [];
+      if (YTDL_COOKIES) cookieArgs.push('--cookies', YTDL_COOKIES);
+      else if (YTDL_COOKIES_FROM_BROWSER) cookieArgs.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
+      if (YTDL_USER_AGENT) cookieArgs.push('--user-agent', YTDL_USER_AGENT);
       const args = [
         '--proxy', WARP_PROXY, '--dump-json', '--no-playlist',
         '--default-search', 'ytsearch5', '--no-warnings',
+        ...cookieArgs,
       ];
       args.push(query.match(/^https?:\/\//) ? query : `ytsearch5:${query}`);
 
@@ -270,19 +283,28 @@ class MusicManager {
   }
 
   // ── Stop ───────────────────────────────────────────────────
+  // Stay semantics: with Stay ON the FIRST Stop only clears the queue and
+  // keeps the bot in the channel (user: "stay instead of disconnect").
+  // A second Stop (queue already empty & not playing) actually leaves.
+  // Returns { ok, left, message }.
 
   async stop(guildId) {
     const queue = this.getQueue(guildId);
+    const alreadyEmpty = queue.tracks.length === 0 && !queue.playing;
     queue.tracks = [];
     queue.currentIndex = -1;
     queue.playing = false;
     queue.paused = false;
-    queue.stay = false;
     await this.killProc(guildId);
     const player = this.players.get(guildId);
     if (player) player.stop(true);
+    // Stay ON + something was playing/queued → clear but STAY (never auto-leave)
+    if (queue.stay && !alreadyEmpty) {
+      return { ok: true, left: false, message: '⏹ Queue cleared — bot stays (Stay ON). Press Stop again to leave.' };
+    }
     if (queue.connection) { queue.connection.destroy(); queue.connection = null; }
     this.disconnect(guildId);
+    return { ok: true, left: true };
   }
 
   // ── Pause / Resume ─────────────────────────────────────────
@@ -314,10 +336,50 @@ class MusicManager {
     return queue.stay;
   }
 
+  // Load per-guild stay state after startup (survives PM2 restarts)
+  loadStayState(saved) {
+    if (!saved || typeof saved !== 'object') return;
+    for (const [gid, s] of Object.entries(saved)) {
+      if (s && typeof s.stay === 'boolean' && this.queues.has(gid)) {
+        this.queues.get(gid).stay = s.stay;
+      }
+    }
+  }
+
   disconnect(guildId) {
     this.queues.delete(guildId);
     this.players.delete(guildId);
     this.procs.delete(guildId);
+  }
+
+  // Re-join a voice channel after a restart if the guild had Stay ON.
+  // Returns true if a channel was rejoined.
+  async rejoinSavedChannel(client, saved) {
+    let rejoined = 0;
+    if (!saved || typeof saved !== 'object') return 0;
+    for (const [gid, s] of Object.entries(saved)) {
+      if (!s || s.stay !== true || !s.channelId) continue;
+      const guild = client.guilds.cache.get(gid);
+      if (!guild) continue;
+      const channel = guild.channels.cache.get(s.channelId);
+      if (!channel || !channel.isVoiceBased?.()) continue;
+      try {
+        const queue = this.getQueue(gid);   // restores stay=true from state
+        queue.channel = channel;
+        queue.connection = joinVoiceChannel({
+          channelId: channel.id,
+          guildId: gid,
+          adapterCreator: guild.voiceAdapterCreator,
+          selfDeaf: false,
+        });
+        queue.onIdle = (ggid) => { /* stay ON — never schedule leave */ };
+        rejoined++;
+        console.log(`[rejoin] Guild ${gid} re-joined ${channel.name} (Stay ON persists across restart)`);
+      } catch (e) {
+        console.warn(`[rejoin] Guild ${gid} failed:`, e.message);
+      }
+    }
+    return rejoined;
   }
 
   // ── Shuffle / Loop ─────────────────────────────────────────
