@@ -11,6 +11,10 @@ function ytdlpBaseArgs() {
   if (YTDL_COOKIES) args.push('--cookies', YTDL_COOKIES);
   else if (YTDL_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
   if (YTDL_USER_AGENT) args.push('--user-agent', YTDL_USER_AGENT);
+  // Use multiple YouTube player clients for resiliency (fallback chain).
+  // web solves JS challenges via deno; android/mweb cover videos where
+  // web returns "Only images are available" (rate-limited/format-blocked).
+  args.push('--extractor-args', 'youtube:player_client=web,android,mweb');
   return args;
 }
 

@@ -100,6 +100,7 @@ class MusicManager {
       const args = [
         '--proxy', WARP_PROXY, '--dump-json', '--no-playlist',
         '--default-search', 'ytsearch5', '--no-warnings',
+        '--extractor-args', 'youtube:player_client=web,android,mweb',
         ...cookieArgs,
       ];
       args.push(query.match(/^https?:\/\//) ? query : `ytsearch5:${query}`);
