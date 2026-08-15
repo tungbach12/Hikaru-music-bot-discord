@@ -11,10 +11,13 @@ function ytdlpBaseArgs() {
   if (YTDL_COOKIES) args.push('--cookies', YTDL_COOKIES);
   else if (YTDL_COOKIES_FROM_BROWSER) args.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
   if (YTDL_USER_AGENT) args.push('--user-agent', YTDL_USER_AGENT);
-  // Use multiple YouTube player clients for resiliency (fallback chain).
-  // web solves JS challenges via deno; android/mweb cover videos where
-  // web returns "Only images are available" (rate-limited/format-blocked).
+  // player_client=web,android,mweb fallback chain.
+  // NOTE (2026-08-15): YouTube SABR streaming experiment forces web client
+  // to buffer the ENTIRE file before piping 1 byte (~40s delay for format 18).
+  // android + format 18 (progressive) starts streaming in ~15s with -N 4.
   args.push('--extractor-args', 'youtube:player_client=web,android,mweb');
+  args.push('-4');          // IPv4 only (YouTube IPv6 egress gets flagged harder)
+  args.push('-N', '4');     // concurrent download connections → faster first bytes
   return args;
 }
 
@@ -43,7 +46,7 @@ function swallowPipeErr(e) {
 function makePipeFast(url, start = 0) {
   const args = [
     ...ytdlpBaseArgs(),
-    '-f', 'bestaudio[acodec=opus][ext=webm]/bestaudio[acodec=opus]',
+    '-f', '18/bestaudio[acodec=opus][ext=webm]/bestaudio[acodec=opus]',
     '--no-playlist',
   ];
   if (start > 0) args.push('--download-sections', `*${start}-`);
@@ -92,7 +95,9 @@ function makePipeEncode(url, start = 0) {
   const y = spawn(YTDLP_PATH, args, { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
   const f = spawn(FFmpeg_PATH, [
-    '-loglevel', 'error',
+    '-loglevel', 'error', '-nostdin',
+    '-probesize', '32', '-analyzeduration', '0',
+    '-fflags', 'nobuffer', '-flags', 'low_delay',
     '-i', 'pipe:0',
     '-vn', '-acodec', 'libopus',
     '-ar', '48000', '-ac', '2', '-b:a', '128k',

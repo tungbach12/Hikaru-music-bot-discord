@@ -371,7 +371,7 @@ class MusicManager {
           channelId: channel.id,
           guildId: gid,
           adapterCreator: guild.voiceAdapterCreator,
-          selfDeaf: false,
+          selfDeaf: true,
         });
         queue.onIdle = (ggid) => { /* stay ON — never schedule leave */ };
         rejoined++;

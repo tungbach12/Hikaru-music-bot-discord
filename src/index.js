@@ -101,6 +101,7 @@ async function handleCommand(interaction) {
             channelId: voiceChannel.id,
             guildId: guild.id,
             adapterCreator: guild.voiceAdapterCreator,
+            selfDeaf: true,
           });
           try {
             await entersState(queue.connection, VoiceConnectionStatus.Ready, 20000);
