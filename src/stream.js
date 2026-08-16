@@ -48,7 +48,7 @@ function swallowPipeErr(e) {
 function makePipeFast(url, start = 0) {
   const args = [
     ...ytdlpBaseArgs(),
-    '-f', '18/bestaudio[acodec=opus][ext=webm]/bestaudio[acodec=opus]',
+    '-f', 'bestaudio[acodec=opus][ext=webm]/bestaudio[acodec=opus]',
     '--no-playlist',
   ];
   if (start > 0) args.push('--download-sections', `*${start}-`);
@@ -56,20 +56,18 @@ function makePipeFast(url, start = 0) {
 
   const y = spawn(YTDLP_PATH, args, { env: CHILD_ENV, stdio: ['ignore', 'pipe', 'pipe'] });
 
-  y.stderr.on('data', (d) => console.log(`[yt-dlp fast] ${d}`));
-
+  // Attach BEFORE any data flows — otherwise a fast clean exit can be missed.
   const ready = new Promise((resolve) => {
     let done = false;
     const ok = () => { if (!done) { done = true; clearTimeout(to); resolve(true); } };
     const fail = () => { if (!done) { done = true; clearTimeout(to); resolve(false); } };
     const to = setTimeout(fail, YTDL_TIMEOUT_MS);
-    // FIX (2026-08-15): rely on stderr "ERROR" lines, NOT close/exit.
-    // On fast downloads yt-dlp writes all stdout, exits (close) BEFORE the
-    // data listener can observe it → false "ready:false" → unnecessary fallback.
     y.stdout.once('data', ok);
-    // Treat a clean exit (code 0) with zero bytes as failure too.
+    // exit code 0 with 0 bytes = real failure (format unavailable etc.)
+    let sawData = false;
+    y.stdout.on('data', () => { sawData = true; });
     y.once('close', (code) => {
-      if (code !== 0) fail();
+      if (code !== 0 || !sawData) fail();
     });
     y.stderr.on('data', (d) => {
       const line = String(d);
@@ -98,7 +96,7 @@ function makePipeFast(url, start = 0) {
 function makePipeEncode(url, start = 0) {
   const args = [
     ...ytdlpBaseArgs(),
-    '-f', 'bestaudio/best',
+    '-f', '18/bestaudio/best',
     '--no-playlist',
   ];
   if (start > 0) args.push('--download-sections', `*${start}-`);

@@ -183,20 +183,14 @@ class MusicManager {
       queue.seekPending = false;
       queue.trackStartedAt = Date.now();
 
-      // Two-pipe: fast → fallback
-      const fast = makePipeFast(url, startSec);
-      const okFast = await fast.ready;
-      let pipe, inputType;
-
-      if (okFast) {
-        pipe = { ytdlp: fast.ytdlp, stdout: fast.stdout };
-        inputType = fast.type;
-      } else {
-        await fast.killAll();
-        const enc = makePipeEncode(url, startSec);
-        pipe = { ytdlp: enc.ytdlp, ffmpeg: enc.ffmpeg, stdout: enc.stdout };
-        inputType = enc.type;
-      }
+      // Single-pipe: ALWAYS encode (verified 2026-08-16).
+      // Fast opus pipe can't hold: YouTube SABR (Pitfall 41) strips audio-only
+      // formats → fast pipe returns MP4/AAC (format 18), which @discordjs/voice
+      // with StreamType.WebmOpus rejects → silence ("Did not find the EBML tag").
+      // encode pipe converts MP4/AAC → WebM/Opus (~4s first bytes, EBML ✓).
+      const enc = makePipeEncode(url, startSec);
+      const pipe = { ytdlp: enc.ytdlp, ffmpeg: enc.ffmpeg, stdout: enc.stdout };
+      const inputType = enc.type;
 
       const resource = createAudioResource(pipe.stdout, {
         inputType: STREAM_TYPES[inputType] || StreamType.Arbitrary,
