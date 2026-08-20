@@ -49,6 +49,7 @@ class MusicManager {
         connection: null, channel: null, message: null,
         playing: false, paused: false,
         seekTo: 0, seekPending: false, trackStartedAt: 0,
+        manualSkip: false,
       });
       // Restore persisted stay state (survives PM2 restarts)
       const saved = loadState();
@@ -86,6 +87,8 @@ class MusicManager {
       const queue = this.getQueue(guildId);
       console.log(`[${guildId}] Track ended, loop=${queue.loop}, index=${queue.currentIndex}`);
       this.killProc(guildId).then(() => {
+        // Skip/back already advanced the index — Idle must NOT advance again
+        if (queue.manualSkip) { queue.manualSkip = false; this.playNext(guildId); return; }
         // Seek replay: keep current index (don't advance) — playNext restarts same track at seekTo
         if (queue.seekPending) {
           this.playNext(guildId);
@@ -262,6 +265,7 @@ class MusicManager {
     }
     queue.seekTo = 0;
     queue.seekPending = false;
+    queue.manualSkip = true;   // Idle handler won't re-advance (see listener)
     await this.killProc(guildId);
     const player = this.players.get(guildId);
     if (player) player.stop(true);
@@ -420,13 +424,20 @@ class MusicManager {
   }
 
   // ── Back (previous track) ──────────────────────────────────
-
-  back(guildId) {
+  async back(guildId) {
     const queue = this.getQueue(guildId);
-    if (queue.currentIndex > 0) {
-      queue.currentIndex -= 2; // skip() will increment
-      return this.skip(guildId);
+    if (queue.currentIndex <= 0) {
+      return { ok: false, message: 'Đây là bài đầu — không có bài trước đó.' };
     }
+    queue.seekTo = 0;
+    queue.seekPending = false;
+    queue.manualSkip = true;    // Idle won't re-advance (we move the index ourselves)
+    await this.killProc(guildId);
+    const player = this.players.get(guildId);
+    if (player) player.stop(true);
+    queue.currentIndex--;        // go to previous track
+    await this.playNext(guildId);
+    return { ok: true, message: '⏮ Đã về bài trước' };
   }
 
   // ── Embed update ───────────────────────────────────────────

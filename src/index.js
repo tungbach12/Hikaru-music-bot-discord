@@ -237,22 +237,6 @@ async function handleButton(interaction) {
 
   try {
     switch (customId) {
-      case 'seek_back': {
-        const r = await manager.seek(guild.id, -30);
-        if (!r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
-        return interaction.reply({
-          content: `⏪ −30s → **${formatTime(r.position)}** / ${formatTime(r.duration)}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-      case 'seek_fwd': {
-        const r = await manager.seek(guild.id, 30);
-        if (!r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
-        return interaction.reply({
-          content: `⏩ +30s → **${formatTime(r.position)}** / ${formatTime(r.duration)}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
       case 'vol_down':
         manager.setVolume(guild.id, queue.volume - 10);
         manager.updatePlayerEmbedFast(queue);
@@ -261,9 +245,11 @@ async function handleButton(interaction) {
         manager.setVolume(guild.id, queue.volume + 10);
         manager.updatePlayerEmbedFast(queue);
         break;
-      case 'back':
-        manager.back(guild.id);
+      case 'back': {
+        const r = await manager.back(guild.id);
+        if (r && !r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
         break;
+      }
       case 'skip': {
         const r = await manager.skip(guild.id);
         if (!r.ok) return interaction.reply({ content: r.message, flags: MessageFlags.Ephemeral });
