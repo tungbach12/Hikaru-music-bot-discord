@@ -5,7 +5,7 @@ const {
   joinVoiceChannel,
 } = require('@discordjs/voice');
 const { WARP_PROXY, YTDLP_PATH, CHILD_ENV, DEFAULT_VOLUME, YTDL_COOKIES, YTDL_COOKIES_FROM_BROWSER, YTDL_USER_AGENT } = require('./config');
-const { swallowPipeErr, makePipeFast, makePipeEncode } = require('./stream');
+const { swallowPipeErr, makePipeFast, makePipeEncode, blocks } = require('./stream');
 const { buildPlayingEmbed, buildControlRow1, buildControlRow2 } = require('./PlayerUI');
 const { loadState } = require('./state');
 
@@ -17,6 +17,25 @@ class MusicManager {
     this.queues = new Map();   // guildId -> queue object
     this.procs = new Map();    // guildId -> active processes
     this.players = new Map();  // guildId -> AudioPlayer (created once)
+
+    // Auto-heal: when stream.js detects a YouTube bot-block, rotate happened.
+    // Restart the SAME track from position 0 on the fresh WARP egress.
+    blocks.on('block', ({ url }) => {
+      for (const [gid, q] of this.queues) {
+        const cur = q.tracks[q.currentIndex];
+        if (cur && cur.url === url) {
+          console.log(`[warp-heal] restarting ${url} on fresh egress for guild ${gid}`);
+          q.seekTo = 0;
+          q.seekPending = false;
+          this.killProc(gid).then(() => {
+            const player = this.players.get(gid);
+            if (player) player.stop(true);
+            this.playNext(gid);
+          }).catch(() => {});
+          break;
+        }
+      }
+    });
   }
 
   // ── Queue ──────────────────────────────────────────────────

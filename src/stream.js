@@ -114,7 +114,11 @@ function makePipeEncode(url, start = 0) {
     '-f', 'webm', 'pipe:1',
   ], { env: CHILD_ENV, stdio: ['pipe', 'pipe', 'pipe'] });
 
-  y.stderr.on('data', (d) => console.log(`[yt-dlp encode] ${d}`));
+  y.stderr.on('data', (d) => {
+    console.log(`[yt-dlp encode] ${d}`);
+    // Auto-rotate WARP + retry once when YouTube blocks the session
+    if (/Sign in to confirm|HTTP Error 403|bot/i.test(String(d))) maybeRotateRetryOnce(url, start);
+  });
   f.stderr.on('data', (d) => console.log(`[ffmpeg] ${d}`));
 
   y.stdout.pipe(f.stdin);
@@ -142,4 +146,28 @@ function makePipeEncode(url, start = 0) {
   return { ytdlp: y, ffmpeg: f, stdout: f.stdout, killAll, type: 'WebmOpus' };
 }
 
-module.exports = { swallowPipeErr, makePipeFast, makePipeEncode, ytdlpBaseArgs };
+/**
+ * Auto-rotate WARP egress once per track and notify playback to retry when
+ * YouTube blocks the session with a bot-check. Lives here (not MusicManager)
+ * because the signal surfaces on the yt-dlp stderr pipe.
+ *
+ * Exposes a tiny EventEmitter: `blocks.emit('block', { url, start })` after a
+ * successful rotation so MusicManager can restart the track on the fresh IP.
+ */
+const { EventEmitter } = require('events');
+const blocks = new EventEmitter();
+const retried = new Map();
+function maybeRotateRetryOnce(url, start = 0) {
+  if (retried.get(url)) return;          // already retried this URL
+  retried.set(url, true);
+  console.log(`[warp] Sign-in block detected for ${url} → rotating WARP egress + retry`);
+  const { execFile } = require('child_process');
+  execFile(process.execPath, [`${__dirname}/warp_rotator.js`], { timeout: 45000 }, (err, stdout) => {
+    const ip = (stdout || err?.message || '').trim();
+    console.log(`[warp] rotator → ${ip}`);
+    // Wait a beat for the tunnel to settle, then tell playback to retry.
+    setTimeout(() => { blocks.emit('block', { url, start }); }, 2000);
+  });
+}
+
+module.exports = { swallowPipeErr, makePipeFast, makePipeEncode, ytdlpBaseArgs, maybeRotateRetryOnce, blocks };
