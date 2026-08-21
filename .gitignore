@@ -3,3 +3,9 @@ cookies.txt
 *.log
 node_modules/
 state.json
+.worktrees/
+
+# backups (may contain secrets)
+*.bak-*
+*.bak
+.env.bak*
