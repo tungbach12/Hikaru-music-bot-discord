@@ -8,6 +8,7 @@ const { WARP_PROXY, YTDLP_PATH, CHILD_ENV, DEFAULT_VOLUME, YTDL_COOKIES, YTDL_CO
 const { swallowPipeErr, makePipeFast, makePipeEncode, blocks } = require('./stream');
 const { buildPlayingEmbed, buildControlRow1, buildControlRow2 } = require('./PlayerUI');
 const { loadState } = require('./state');
+const playlists = require('./playlists');
 
 // StreamType mapping
 const STREAM_TYPES = { WebmOpus: StreamType.WebmOpus, OggOpus: StreamType.OggOpus, Arbitrary: StreamType.Arbitrary };
@@ -155,6 +156,52 @@ class MusicManager {
     });
   }
 
+  // ── Fetch songs from a YouTube playlist URL (for /play <playlist>) ──
+  // Tolerant: YouTube "Mix"/radio (list=RD...) playlists paginate via an API
+  // that eventually 403s — so we cap the count and keep whatever we fetched
+  // instead of aborting the whole request.
+  async getPlaylistTracks(url, cap = 50) {
+    return new Promise((resolve) => {
+      const cookieArgs = [];
+      if (YTDL_COOKIES) cookieArgs.push('--cookies', YTDL_COOKIES);
+      else if (YTDL_COOKIES_FROM_BROWSER) cookieArgs.push('--cookies-from-browser', YTDL_COOKIES_FROM_BROWSER);
+      if (YTDL_USER_AGENT) cookieArgs.push('--user-agent', YTDL_USER_AGENT);
+      const args = [
+        '--dump-json', '--flat-playlist', '--ignore-errors',
+        `--playlist-end`, String(cap), '--no-warnings',
+        '--extractor-args', 'youtube:player_client=android,web,mweb',
+        ...cookieArgs,
+      ];
+      if (WARP_PROXY) args.push('--proxy', WARP_PROXY);
+      args.push(url);
+      const proc = spawn(YTDLP_PATH, args, { env: CHILD_ENV });
+      let stdout = '', stderr = '';
+      proc.stdout.on('data', d => stdout += d);
+      proc.stderr.on('data', d => stderr += d);
+      proc.on('close', () => {
+        try {
+          const tracks = stdout.trim().split('\n').filter(Boolean).map(line => {
+            try {
+              const info = JSON.parse(line);
+              if (!info || info._type !== 'url') return null; // only playlist entries
+              return {
+                id: info.id,
+                title: info.title || 'Unknown',
+                duration: info.duration || 0,
+                uploadBy: info.uploader || info.channel || 'Unknown',
+                url: info.webpage_url || (info.id ? `https://www.youtube.com/watch?v=${info.id}` : info.url),
+                thumbnail: info.thumbnail,
+              };
+            } catch { return null; }
+          }).filter(Boolean);
+          if (!tracks.length && stderr) console.warn('[playlist] fetch had no tracks:', stderr.slice(0, 200));
+          resolve(tracks); // resolve even on partial/403 — better to play what we got
+        } catch (e) { resolve([]); }
+      });
+      proc.on('error', () => resolve([]));
+    });
+  }
+
   // ── Core: play next track ──────────────────────────────────
 
   async playNext(guildId) {
@@ -239,6 +286,9 @@ class MusicManager {
       if (queue.connection) queue.connection.subscribe(player);
       player.play(resource);
       this.updatePlayerEmbed(queue);
+
+      // History: record the song that actually started playing (per-guild).
+      playlists.recordPlay(guildId, track);
     } catch (error) {
       console.error('Play error:', error);
       queue.currentIndex++;
